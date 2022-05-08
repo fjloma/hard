@@ -102,7 +102,6 @@ async fn main() {
     .expect("Error setting Ctrl-C handler");
 
     //common thread stuff
-    let influxdb_url = get_config_string("influxdb_url", None);
     let mut futures = vec![];
     let cancel_flag = Arc::new(AtomicBool::new(false));
     
@@ -115,7 +114,10 @@ async fn main() {
                 host_port: host,
                 poll_ok: 0,
                 poll_errors: 0,
-                influxdb_url: influxdb_url.clone(),
+                influxdb_url: get_config_string("influxdb_url", None),
+                influxdb_org: get_config_string("influxdb_org", None),
+                influxdb_token: get_config_string("influxdb_token", None),
+                influxdb_bucket: get_config_string("influxdb_bucket", None),
                 mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
                 optimizers: get_config_bool("optimizers", Some("sun2000")),
                 battery_installed: get_config_bool("battery_installed", Some("sun2000")),

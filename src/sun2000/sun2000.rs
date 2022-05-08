@@ -1,6 +1,6 @@
+use influxdb2;
 use chrono::Timelike;
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
-use influxdb::{InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
 use simplelog::*;
 use std::fmt;
@@ -11,12 +11,12 @@ use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
 use tokio_modbus::client::Context;
 use tokio_modbus::prelude::*;
 
 use super::defs::*;
+use futures::prelude::*;
 
 pub const SUN2000_POLL_INTERVAL_SECS: u32 = 5; //secs between polling
 pub const SUN2000_STATS_DUMP_INTERVAL_SECS: f32 = 30.0; //secs between showing stats
@@ -48,7 +48,7 @@ impl fmt::Display for ParamKind {
 }
 
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Parameter {
     name: String,
     value: ParamKind,
@@ -161,39 +161,40 @@ impl Parameter {
         }
     }
 
-    pub fn get_influx_value(&self) -> influxdb::Type {
+    pub fn get_influx_value(&self) -> influxdb2::models::FieldValue {
         match &self.value {
-            ParamKind::Text(v) => {
-                return Type::Text(v.clone().unwrap());
+            ParamKind::Text(Some(v)) => {
+                return influxdb2::models::FieldValue::String((*v).clone());
             }
-            ParamKind::NumberU16(v) => {
-                return if self.gain != 1 {
-                    Type::Float(v.clone().unwrap() as f64 / self.gain as f64)
+            ParamKind::NumberU16(Some(v)) => {
+                if self.gain != 1 {
+                    return (*v as f64 / self.gain as f64).into();
                 } else {
-                    Type::UnsignedInteger(v.clone().unwrap() as u64)
+                    return (*v as i64).into();
                 }
             }
-            ParamKind::NumberI16(v) => {
-                return if self.gain != 1 {
-                    Type::Float(v.clone().unwrap() as f64 / self.gain as f64)
+            ParamKind::NumberI16(Some(v)) => {
+                if self.gain != 1 {
+                    return (*v as f64 / self.gain as f64).into();
                 } else {
-                    Type::SignedInteger(v.clone().unwrap() as i64)
+                    return (*v as i64).into();
                 }
             }
-            ParamKind::NumberU32(v) => {
-                return if self.gain != 1 {
-                    Type::Float(v.clone().unwrap() as f64 / self.gain as f64)
+            ParamKind::NumberU32(Some(v)) => {
+                if self.gain != 1 {
+                    return (*v as f64 / self.gain as f64).into();
                 } else {
-                    Type::UnsignedInteger(v.clone().unwrap() as u64)
+                    return (*v as i64).into();
                 }
             }
-            ParamKind::NumberI32(v) => {
-                return if self.gain != 1 {
-                    Type::Float(v.clone().unwrap() as f64 / self.gain as f64)
+            ParamKind::NumberI32(Some(v)) => {
+                if self.gain != 1 {
+                    return (*v as f64 / self.gain as f64).into();
                 } else {
-                    Type::SignedInteger(v.clone().unwrap() as i64)
+                    return (*v as i64).into();
                 }
             }
+            _ => {panic!("{:?}", self)}
         }
     }
 }
@@ -205,6 +206,9 @@ pub struct Sun2000 {
     pub poll_ok: u64,
     pub poll_errors: u64,
     pub influxdb_url: Option<String>,
+    pub influxdb_org: Option<String>,
+    pub influxdb_token: Option<String>,
+    pub influxdb_bucket: Option<String>,
     pub mode_change_script: Option<String>,
     pub optimizers: bool,
     pub battery_installed: bool,
@@ -289,53 +293,16 @@ impl Sun2000 {
         ]
     }
 
-    async fn save_ms_to_influxdb(
-        client: influxdb::Client,
-        thread_name: &String,
-        ms: u64,
-        param_count: usize,
-    ) -> Result<()> {
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis();
-
-        let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter_query_time");
-        query = query.add_field("value", ms);
-        query = query.add_field("param_count", param_count as u8);
-
-        match client.query(&query).await {
-            Ok(msg) => {
-                debug!("{}: influxdb write success: {:?}", thread_name, msg);
-            }
-            Err(e) => {
-                error!("<i>{}</>: influxdb write error: <b>{:?}</>", thread_name, e);
-            }
-        }
-
-        Ok(())
-    }
-
     async fn read_params(
         &mut self,
         mut ctx: Context,
         parameters: &Vec<Parameter>,
-        initial_read: bool,
-        client: Option<influxdb::Client>
-    ) -> io::Result<(Context, Vec<Parameter>)> {
+        initial_read: bool
+    ) -> io::Result<(Context, Vec<Parameter>, u64)> {
 
         let mut params: Vec<Parameter> = vec![];
         let mut disconnected = false;
         let now = Instant::now();
-
-        let start = SystemTime::now();
-        let since_the_epoch = start
-            .duration_since(UNIX_EPOCH)
-            .expect("Time went backwards")
-            .as_millis();
-
-        let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter");
 
         let params_to_read: Vec<&Parameter> = parameters.into_iter().filter(|s| {
             (initial_read && s.initial_read)
@@ -524,11 +491,6 @@ impl Sun2000 {
                 p.save_to_influx,
             );
             params.push(param.clone());
-
-            //write data to influxdb if configured
-            if !initial_read && p.save_to_influx {
-                query = query.add_field(&p.name, param.get_influx_value());                       
-            }
         }
 
         let elapsed = now.elapsed();
@@ -540,24 +502,7 @@ impl Sun2000 {
             ms
         );
 
-        if !initial_read {
-            if let Some(c) = client.clone() {
-                match c.query(&query).await {
-                    Ok(msg) => {
-                        debug!("{}: influxdb write success: {:?}", &self.name, msg);
-                    }
-                    Err(e) => {
-                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", &self.name, e);
-                    }
-                }
-            }
-        }
-
-        //save query time
-        if let Some(c) = client {
-            let _ = Sun2000::save_ms_to_influxdb(c, &self.name, ms, params.len()).await;
-        }
-        Ok((ctx, params))
+        Ok((ctx, params, ms))
     }
 
     fn attribute_parser(&self, mut a: Vec<u8>) -> Result<()> {
@@ -657,7 +602,7 @@ impl Sun2000 {
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     //obtaining all parameters from inverter
-                    let (new_ctx, params) = self.read_params(ctx, &parameters, true, None).await?;
+                    let (new_ctx, params, _) = self.read_params(ctx, &parameters, true).await?;
                     ctx = new_ctx;
                     
                     for p in &params {
@@ -791,17 +736,13 @@ impl Sun2000 {
                         let mut alarm_3: Option<u16> = None;
                         let mut fault_code: Option<u16> = None;
                         
-
-                        // connect to influxdb
-                        let client = match &self.influxdb_url {
-                            Some(url) => Some(influxdb::Client::new(url, "sun2000")),
-                            None => None,
-                        };
-
                         //obtaining all parameters from inverter
-                        let (new_ctx, params) =
-                            self.read_params(ctx, &parameters, false, client.clone()).await?;
+
+                        let (new_ctx, params, ms) =
+                            self.read_params(ctx, &parameters, false).await?;
                         ctx = new_ctx;
+
+
                         for p in &params {
                             match p.value {
                                 ParamKind::NumberU16(n) => match p.name.as_ref() {
@@ -852,6 +793,23 @@ impl Sun2000 {
                             self.poll_ok = self.poll_ok + 1;
                         }
 
+                        let mut point = influxdb2::models::DataPoint::builder("inverter");
+
+                        for p in &params {
+                            if p.save_to_influx {
+                                point = point.field(p.name.clone(), p.get_influx_value());
+                            }
+                        }
+
+                        let mut points = vec![point.build()?];
+
+                                        
+                        //save query time                
+                        points.push(influxdb2::models::DataPoint::builder("inverter_query_time")
+                            .field("value", ms as i64)
+                            .field("param_count", param_count as i64).build()?);
+                                        
+
                         //setting new inverter state/alarm
                         let mut state_changes = HashMap::new();
                         state.set_new_status(
@@ -870,29 +828,29 @@ impl Sun2000 {
                         );
 
                         if !state_changes.is_empty() {
-                            let start = SystemTime::now();
-                            let since_the_epoch = start
-                                .duration_since(UNIX_EPOCH)
-                                .expect("Time went backwards")
-                                .as_millis();                        
-                            let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter_status");
-
+                            let mut point = influxdb2::models::DataPoint::builder("inverter_status");
                             for (state_key, state_str) in state_changes.iter() {
-                                query = query.add_field(*state_key, state_str.clone());
+                                point = point.field((*state_key).clone(), (*state_str).clone());
                             }
-                    
-                            if let Some(c) = client.clone() {
-                                match c.query(&query).await {
-                                    Ok(msg) => {
-                                        debug!("{}: influxdb write success: {:?}", self.name, msg);
-                                    }
-                                    Err(e) => {
-                                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", self.name, e);
-                                    }
+                            points.push(point.build()?);
+                        }
+
+
+                        if let (Some(influx_url),Some(influx_org),Some(influxdb_token),Some(influxdb_bucket)) = (&self.influxdb_url, &self.influxdb_org, &self.influxdb_token, &self.influxdb_bucket) {
+                            let client = influxdb2::Client::new(influx_url, influx_org, influxdb_token);
+
+                            let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                            match res {
+                                Ok(msg) => {
+                                    debug!("{}: influxdb write success: {:?}", &self.name, msg);
+                                }
+                                Err(e) => {
+                                    error!("<i>{}</>: influxdb write error: <b>{:?}</>", &self.name, e);
                                 }
                             }
-                    
                         }
+
 
                         //process obtained parameters
                         debug!("Query complete, dump results:");

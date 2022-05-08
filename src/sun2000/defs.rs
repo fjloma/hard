@@ -685,7 +685,7 @@ impl Sun2000State {
             if alarm_1.unwrap() != 0 || self.alarm_1.is_some() {
                 let l =  Sun2000State::get_alarm1_description(alarm_1.unwrap());
                 changes.insert("alarm_1", l.clone());
-                info!(
+                warn!(
                     "<i>{}</>: alarm_1: <b><red>{}</>",
                     thread_name,
                     l.clone()
@@ -698,7 +698,7 @@ impl Sun2000State {
             if alarm_2.unwrap() != 0 || self.alarm_2.is_some() {
                 let l = Sun2000State::get_alarm2_description(alarm_2.unwrap());
                 changes.insert("alarm_2", l.clone());
-                info!(
+                warn!(
                     "<i>{}</>: alarm_2: <b><red>{}</>",
                     thread_name,
                     l.clone()
@@ -711,7 +711,7 @@ impl Sun2000State {
             if alarm_3.unwrap() != 0 || self.alarm_3.is_some() {
                 let l = Sun2000State::get_alarm3_description(alarm_3.unwrap());
                 changes.insert("alarm_3", l.clone());
-                info!(
+                warn!(
                     "<i>{}</>: alarm_3: <b><red>{}</>",
                     thread_name,
                     l.clone()
