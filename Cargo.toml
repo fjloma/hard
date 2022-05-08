@@ -8,18 +8,15 @@ edition = "2018"
 
 [dependencies]
 rust-ini = "0.10.3"
-#openssl = { version = "0.10.*", features = ["vendored"] }
 ctrlc = { version = "3.1.0", features = ["termination"] }
 log = "0.4.1"
 simplelog = { version = "0.11.2", features = ["paris", "ansi_term"] }
 futures = "0.3"
 tokio = { version = "1.15.0", features = ["full"] }
-#influxdb = { version = "0.5.2" } #, default-features = false, features = ["h1-client"]}
 chrono = { version = "0.4.11", features = ["serde"] }
-#tokio-compat-02 = "0.1"
 humantime = "2.0.1"
 tokio-modbus = { version = "0.5.2", default-features = false, features = ["tcp"] }
-influxdb2 = "0.1.0"
+influxdb2 = {git = "https://github.com/fjloma/influxdb2", version = "0.1.0" }
 
 
 [profile.release]
