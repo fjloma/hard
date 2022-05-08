@@ -20,7 +20,7 @@ use futures::prelude::*;
 
 pub const SUN2000_POLL_INTERVAL_SECS: u32 = 5; //secs between polling
 pub const SUN2000_STATS_DUMP_INTERVAL_SECS: f32 = 30.0; //secs between showing stats
-pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 3; //max read attempts per single parameter
+pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 2; //max read attempts per single parameter
 
 // Just a generic Result type to ease error handling for us. Errors in multithreaded
 // async contexts needs some extra restrictions
@@ -360,7 +360,7 @@ impl Sun2000 {
                 let read_res;
                 let start = Instant::now();
                 let read_time;
-                match timeout(Duration::from_secs_f32(1.2), retval).await {
+                match timeout(Duration::from_secs_f32(3.0), retval).await {
                     Ok(res) => {
                         read_res = res;
                         read_time = start.elapsed();
@@ -381,7 +381,7 @@ impl Sun2000 {
                 }
                 match read_res {
                     Ok(data) => {
-                        if read_time > Duration::from_secs_f32(1.0) {
+                        if read_time > Duration::from_secs_f32(2.0) {
                             warn!(
                                 "<i>{}</i>: inverter has lagged during read, register: <green><i>{}-{}</>, read time: <b>{:?}</>",
                                 self.name, addr_start, addr_len, read_time
@@ -400,8 +400,7 @@ impl Sun2000 {
                         let msg = format!(
                             "<i>{}</i>: read error (attempt #{} of {}), register: <green><i>{}-{}</>, error: <b>{}</>, read time: <b>{:?}</>",
                             self.name, attempts, SUN2000_ATTEMPTS_PER_PARAM, addr_start, addr_len, e, read_time
-                        );
-                        match e.kind() {
+                        );                        match e.kind() {
                             ErrorKind::BrokenPipe | ErrorKind::ConnectionReset => {
                                 error!("{}", msg);
                                 disconnected = true;
