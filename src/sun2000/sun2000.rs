@@ -1,3 +1,4 @@
+use chrono::Timelike;
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use influxdb::{InfluxDbWriteable, Timestamp, Type};
 use io::ErrorKind;
@@ -17,7 +18,7 @@ use tokio_modbus::prelude::*;
 
 use super::defs::*;
 
-pub const SUN2000_POLL_INTERVAL_SECS: f32 = 5.0; //secs between polling
+pub const SUN2000_POLL_INTERVAL_SECS: u32 = 5; //secs between polling
 pub const SUN2000_STATS_DUMP_INTERVAL_SECS: f32 = 30.0; //secs between showing stats
 pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 3; //max read attempts per single parameter
 
@@ -604,7 +605,6 @@ impl Sun2000 {
     #[rustfmt::skip]
     pub async fn worker(&mut self, worker_cancel_flag: Arc<AtomicBool>) -> Result<()> {
         info!("<i>{}</>: Starting task", self.name);
-        let mut poll_interval = Instant::now();
         let mut stats_interval = Instant::now();
         let mut terminated = false;
 
@@ -745,6 +745,8 @@ impl Sun2000 {
                         }
                     }
 
+                    
+
                     let mut daily_yield_energy: Option<u32> = None;
                     loop {
                         if worker_cancel_flag.load(Ordering::SeqCst) {
@@ -768,138 +770,141 @@ impl Sun2000 {
                             }
                         }
 
-                        if poll_interval.elapsed()
-                            > Duration::from_secs_f32(SUN2000_POLL_INTERVAL_SECS)
-                        {
-                            poll_interval = Instant::now();
-                            let mut device_status: Option<u16> = None;
-                            let mut storage_status: Option<i16> = None;
-                            let mut grid_code: Option<u16> = None;
-                            let mut state_1: Option<u16> = None;
-                            let mut state_2: Option<u16> = None;
-                            let mut state_3: Option<u32> = None;
-                            let mut alarm_1: Option<u16> = None;
-                            let mut alarm_2: Option<u16> = None;
-                            let mut alarm_3: Option<u16> = None;
-                            let mut fault_code: Option<u16> = None;
-                            
+                        let now = chrono::Utc::now();
+                        let mut start = now.with_second((now.second()/SUN2000_POLL_INTERVAL_SECS)*SUN2000_POLL_INTERVAL_SECS).unwrap().with_nanosecond(0).unwrap().signed_duration_since(now);
 
-                            // connect to influxdb
-                            let client = match &self.influxdb_url {
-                                Some(url) => Some(influxdb::Client::new(url, "sun2000")),
-                                None => None,
-                            };
+                        let period = chrono::Duration::seconds(SUN2000_POLL_INTERVAL_SECS.into()).to_std().unwrap();
+                        while start < chrono::Duration::seconds(0) {
+                            start = start.checked_add(&chrono::Duration::seconds(SUN2000_POLL_INTERVAL_SECS.into())).unwrap();
+                        }
+                        let mut interval = tokio::time::interval_at(tokio::time::Instant::now() + start.to_std().unwrap(), period);    
+                        interval.tick().await;
 
-                            //obtaining all parameters from inverter
-                            let (new_ctx, params) =
-                                self.read_params(ctx, &parameters, false, client.clone()).await?;
-                            ctx = new_ctx;
-                            for p in &params {
-                                match p.value {
-                                    ParamKind::NumberU16(n) => match p.name.as_ref() {
-                                        "fault_code" => match n {
-                                            Some(fc) => {
-                                                if fc != 0 {
-                                                    error!(
-                                                        "<i>{}</>: inverter fault code is: <b><red>{:#08X}</>",
-                                                        self.name, fc
-                                                    );
-                                                }
-                                                fault_code = n;
+                        let mut device_status: Option<u16> = None;
+                        let mut storage_status: Option<i16> = None;
+                        let mut grid_code: Option<u16> = None;
+                        let mut state_1: Option<u16> = None;
+                        let mut state_2: Option<u16> = None;
+                        let mut state_3: Option<u32> = None;
+                        let mut alarm_1: Option<u16> = None;
+                        let mut alarm_2: Option<u16> = None;
+                        let mut alarm_3: Option<u16> = None;
+                        let mut fault_code: Option<u16> = None;
+                        
+
+                        // connect to influxdb
+                        let client = match &self.influxdb_url {
+                            Some(url) => Some(influxdb::Client::new(url, "sun2000")),
+                            None => None,
+                        };
+
+                        //obtaining all parameters from inverter
+                        let (new_ctx, params) =
+                            self.read_params(ctx, &parameters, false, client.clone()).await?;
+                        ctx = new_ctx;
+                        for p in &params {
+                            match p.value {
+                                ParamKind::NumberU16(n) => match p.name.as_ref() {
+                                    "fault_code" => match n {
+                                        Some(fc) => {
+                                            if fc != 0 {
+                                                error!(
+                                                    "<i>{}</>: inverter fault code is: <b><red>{:#08X}</>",
+                                                    self.name, fc
+                                                );
                                             }
-                                            _ => {}
-                                        },
-                                        "device_status" => device_status = n,
-                                        "grid_code" => grid_code = n,
-                                        "state_1" => state_1 = n,
-                                        "state_2" => state_2 = n,
-                                        "alarm_1" => alarm_1 = n,
-                                        "alarm_2" => alarm_2 = n,
-                                        "alarm_3" => alarm_3 = n,
+                                            fault_code = n;
+                                        }
                                         _ => {}
                                     },
-                                    ParamKind::NumberI16(n) => match p.name.as_ref() {
-                                        "storage_status" => storage_status = n,
-                                        _ => {}
-                                    },
-                                    ParamKind::NumberU32(n) => match p.name.as_ref() {
-                                        "state_3" => state_3 = n,
-                                        "daily_yield_energy" => daily_yield_energy = n,
-                                        _ => {}
-                                    },
+                                    "device_status" => device_status = n,
+                                    "grid_code" => grid_code = n,
+                                    "state_1" => state_1 = n,
+                                    "state_2" => state_2 = n,
+                                    "alarm_1" => alarm_1 = n,
+                                    "alarm_2" => alarm_2 = n,
+                                    "alarm_3" => alarm_3 = n,
                                     _ => {}
-                                }
-                            }
-
-                            let param_count = parameters.iter().filter(|s| s.save_to_influx ||
-                                s.name.starts_with("state_") ||
-                                s.name.starts_with("alarm_") ||
-                                s.name.ends_with("_status") ||
-                                s.name.ends_with("_code")).count();
-                            if params.len() != param_count {
-                                error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
-                                self.poll_errors = self.poll_errors + 1;
-                                break;
-                            } else {
-                                self.poll_ok = self.poll_ok + 1;
-                            }
-
-                            //setting new inverter state/alarm
-                            let mut state_changes = HashMap::new();
-                            state.set_new_status(
-                                &self.name,
-                                device_status,
-                                storage_status,
-                                grid_code,
-                                state_1,
-                                state_2,
-                                state_3,
-                                alarm_1,
-                                alarm_2,
-                                alarm_3,
-                                fault_code,
-                                &mut state_changes
-                            );
-
-                            if !state_changes.is_empty() {
-                                let start = SystemTime::now();
-                                let since_the_epoch = start
-                                    .duration_since(UNIX_EPOCH)
-                                    .expect("Time went backwards")
-                                    .as_millis();                        
-                                let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter_status");
-
-                                for (state_key, state_str) in state_changes.iter() {
-                                    query = query.add_field(*state_key, state_str.clone());
-                                }
-                        
-                                if let Some(c) = client.clone() {
-                                    match c.query(&query).await {
-                                        Ok(msg) => {
-                                            debug!("{}: influxdb write success: {:?}", self.name, msg);
-                                        }
-                                        Err(e) => {
-                                            error!("<i>{}</>: influxdb write error: <b>{:?}</>", self.name, e);
-                                        }
-                                    }
-                                }
-                        
-                            }
-
-                            //process obtained parameters
-                            debug!("Query complete, dump results:");
-                            for p in &params {
-                                debug!(
-                                    "  {} ({:?}): {} {}",
-                                    p.name,
-                                    p.desc.clone().unwrap_or_default(),
-                                    p.get_text_value(),
-                                    p.unit.clone().unwrap_or_default()
-                                );
+                                },
+                                ParamKind::NumberI16(n) => match p.name.as_ref() {
+                                    "storage_status" => storage_status = n,
+                                    _ => {}
+                                },
+                                ParamKind::NumberU32(n) => match p.name.as_ref() {
+                                    "state_3" => state_3 = n,
+                                    "daily_yield_energy" => daily_yield_energy = n,
+                                    _ => {}
+                                },
+                                _ => {}
                             }
                         }
 
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        let param_count = parameters.iter().filter(|s| s.save_to_influx ||
+                            s.name.starts_with("state_") ||
+                            s.name.starts_with("alarm_") ||
+                            s.name.ends_with("_status") ||
+                            s.name.ends_with("_code")).count();
+                        if params.len() != param_count {
+                            error!("<i>{}</>: problem obtaining a complete parameter list (read: {}, expected: {}), reconnecting...", self.name, params.len(), param_count);
+                            self.poll_errors = self.poll_errors + 1;
+                            break;
+                        } else {
+                            self.poll_ok = self.poll_ok + 1;
+                        }
+
+                        //setting new inverter state/alarm
+                        let mut state_changes = HashMap::new();
+                        state.set_new_status(
+                            &self.name,
+                            device_status,
+                            storage_status,
+                            grid_code,
+                            state_1,
+                            state_2,
+                            state_3,
+                            alarm_1,
+                            alarm_2,
+                            alarm_3,
+                            fault_code,
+                            &mut state_changes
+                        );
+
+                        if !state_changes.is_empty() {
+                            let start = SystemTime::now();
+                            let since_the_epoch = start
+                                .duration_since(UNIX_EPOCH)
+                                .expect("Time went backwards")
+                                .as_millis();                        
+                            let mut query = Timestamp::Milliseconds(since_the_epoch).into_query("inverter_status");
+
+                            for (state_key, state_str) in state_changes.iter() {
+                                query = query.add_field(*state_key, state_str.clone());
+                            }
+                    
+                            if let Some(c) = client.clone() {
+                                match c.query(&query).await {
+                                    Ok(msg) => {
+                                        debug!("{}: influxdb write success: {:?}", self.name, msg);
+                                    }
+                                    Err(e) => {
+                                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", self.name, e);
+                                    }
+                                }
+                            }
+                    
+                        }
+
+                        //process obtained parameters
+                        debug!("Query complete, dump results:");
+                        for p in &params {
+                            debug!(
+                                "  {} ({:?}): {} {}",
+                                p.name,
+                                p.desc.clone().unwrap_or_default(),
+                                p.get_text_value(),
+                                p.unit.clone().unwrap_or_default()
+                            );
+                        }
                     }
                 }
                 Err(e) => {
