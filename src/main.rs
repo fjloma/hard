@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc};
 use std::time::{Duration, Instant};
 use tokio::task;
-use tokio_compat_02::FutureExt;
+//use tokio_compat_02::FutureExt;
 
 
 mod sun2000;
@@ -124,7 +124,7 @@ async fn main() {
                 dongle_connection: get_config_bool("dongle_connection", Some("sun2000")),
             };
             let sun2000_future =
-                task::spawn(async move { sun2000.worker(worker_cancel_flag).compat().await });
+                task::spawn(async move { sun2000.worker(worker_cancel_flag).await });
             futures.push(sun2000_future);
         }
         _ => {}

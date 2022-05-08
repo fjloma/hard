@@ -16,7 +16,7 @@ futures = "0.3"
 tokio = { version = "1.15.0", features = ["full"] }
 #influxdb = { version = "0.5.2" } #, default-features = false, features = ["h1-client"]}
 chrono = { version = "0.4.11", features = ["serde"] }
-tokio-compat-02 = "0.1"
+#tokio-compat-02 = "0.1"
 humantime = "2.0.1"
 tokio-modbus = { version = "0.5.2", default-features = false, features = ["tcp"] }
 influxdb2 = "0.1.0"
