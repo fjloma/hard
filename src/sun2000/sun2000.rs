@@ -440,57 +440,60 @@ impl Sun2000 {
                     }
                 }
             }
-            match &p.value {
-                ParamKind::Text(_) => {
-                    let bytes: Vec<u8> = values.iter().fold(vec![], |mut x, elem| {
-                        if (elem >> 8) as u8 != 0 {
-                            x.push((elem >> 8) as u8);
+            if values.len() > 0 {
+                match &p.value {
+                    ParamKind::Text(_) => {
+                        let bytes: Vec<u8> = values.iter().fold(vec![], |mut x, elem| {
+                            if (elem >> 8) as u8 != 0 {
+                                x.push((elem >> 8) as u8);
+                            }
+                            if (elem & 0xff) as u8 != 0 {
+                                x.push((elem & 0xff) as u8);
+                            }
+                            x
+                        });
+                        let id = String::from_utf8(bytes).unwrap();
+                        val2 = ParamKind::Text(Some(id));
+                    }
+                    ParamKind::NumberU16(_) => {
+                        debug!("-> {} = {:?}", p.name, values);
+                        val2 = ParamKind::NumberU16(Some(values[0] as u16));
+                    }
+                    ParamKind::NumberI16(_) => {
+                        debug!("-> {} = {:?}", p.name, values);
+                        val2 = ParamKind::NumberI16(Some(values[0] as i16));
+                    }
+                    ParamKind::NumberU32(_) => {
+                        let new_val: u32 = ((values[0] as u32) << 16) | values[1] as u32;
+                        debug!("-> {} = {:X?} {:X}", p.name, values, new_val);
+                        val2 = ParamKind::NumberU32(Some(new_val));
+                        if p.unit.unwrap_or_default() == "epoch" && new_val == 0 {
+                            //zero epoch makes no sense, let's set it to None
+                            val2 = ParamKind::NumberU32(None);
                         }
-                        if (elem & 0xff) as u8 != 0 {
-                            x.push((elem & 0xff) as u8);
-                        }
-                        x
-                    });
-                    let id = String::from_utf8(bytes).unwrap();
-                    val2 = ParamKind::Text(Some(id));
-                }
-                ParamKind::NumberU16(_) => {
-                    debug!("-> {} = {:?}", p.name, values);
-                    val2 = ParamKind::NumberU16(Some(values[0] as u16));
-                }
-                ParamKind::NumberI16(_) => {
-                    debug!("-> {} = {:?}", p.name, values);
-                    val2 = ParamKind::NumberI16(Some(values[0] as i16));
-                }
-                ParamKind::NumberU32(_) => {
-                    let new_val: u32 = ((values[0] as u32) << 16) | values[1] as u32;
-                    debug!("-> {} = {:X?} {:X}", p.name, values, new_val);
-                    val2 = ParamKind::NumberU32(Some(new_val));
-                    if p.unit.unwrap_or_default() == "epoch" && new_val == 0 {
-                        //zero epoch makes no sense, let's set it to None
-                        val2 = ParamKind::NumberU32(None);
+                    }
+                    ParamKind::NumberI32(_) => {
+                        let new_val: i32 =
+                            ((values[0] as i32) << 16) | (values[1] as u32) as i32;
+                        debug!("-> {} = {:X?} {:X}", p.name, values, new_val);
+                        val2 = ParamKind::NumberI32(Some(new_val));
                     }
                 }
-                ParamKind::NumberI32(_) => {
-                    let new_val: i32 =
-                        ((values[0] as i32) << 16) | (values[1] as u32) as i32;
-                    debug!("-> {} = {:X?} {:X}", p.name, values, new_val);
-                    val2 = ParamKind::NumberI32(Some(new_val));
-                }
-            }
+            
 
-            let param = Parameter::new_from_string(
-                p.name.clone(),
-                val2,
-                p.desc.clone(),
-                p.unit.clone(),
-                p.gain,
-                p.reg_address,
-                p.len,
-                p.initial_read,
-                p.save_to_influx,
-            );
-            params.push(param.clone());
+                let param = Parameter::new_from_string(
+                    p.name.clone(),
+                    val2,
+                    p.desc.clone(),
+                    p.unit.clone(),
+                    p.gain,
+                    p.reg_address,
+                    p.len,
+                    p.initial_read,
+                    p.save_to_influx,
+                );
+                params.push(param.clone());
+            }
         }
 
         let elapsed = now.elapsed();
@@ -737,9 +740,9 @@ impl Sun2000 {
                         let mut fault_code: Option<u16> = None;
                         
                         //obtaining all parameters from inverter
+                        let now = chrono::Utc::now();
 
-                        let (new_ctx, params, ms) =
-                            self.read_params(ctx, &parameters, false).await?;
+                        let (new_ctx, params, ms) = self.read_params(ctx, &parameters, false).await?;
                         ctx = new_ctx;
 
 
@@ -828,7 +831,7 @@ impl Sun2000 {
                         );
 
                         if !state_changes.is_empty() {
-                            let mut point = influxdb2::models::DataPoint::builder("inverter_status");
+                            let mut point = influxdb2::models::DataPoint::builder("inverter_status").timestamp(now.timestamp_nanos());
                             for (state_key, state_str) in state_changes.iter() {
                                 point = point.field((*state_key).clone(), (*state_str).clone());
                             }
