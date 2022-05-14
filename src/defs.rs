@@ -2,6 +2,9 @@ use simplelog::*;
 use std::ops::Add;
 use std::collections::HashMap;
 
+
+
+
 pub struct Alarm {
     name: &'static str,
     code: u16,
@@ -414,7 +417,7 @@ impl Sun2000State {
     }
 
     #[rustfmt::skip]
-    fn get_state1_description(code: u16) -> String {
+    pub fn get_state1_description(code: u16) -> String {
         let mut descr = String::from("");
         let state1_masks = vec! [
             (0b0000_0000_0000_0001, "standby"),

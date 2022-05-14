@@ -1,8 +1,7 @@
 
-extern crate ctrlc;
-extern crate simplelog;
-use crate::sun2000::sun2000::Sun2000;
 use simplelog::*;
+
+use ::sun2000::*;
 
 extern crate ini;
 use self::ini::Ini;
@@ -10,16 +9,12 @@ use self::ini::Ini;
 use futures::future::join_all;
 use humantime::format_duration;
 use std::env;
-use std::fs::OpenOptions;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc};
 use std::time::{Duration, Instant};
 use tokio::task;
 //use tokio_compat_02::FutureExt;
-
-
-mod sun2000;
-
 
 
 fn get_config_string(option_name: &str, section: Option<&str>) -> Option<String> {
@@ -44,53 +39,14 @@ fn get_config_bool(option_name: &str, section: Option<&str>) -> bool {
     }
 }
 
-fn logging_init() {
-    let conf = ConfigBuilder::new()
-        .set_time_format("%F, %H:%M:%S%.3f".to_string())
-        .set_write_log_enable_colors(true)
-        .build();
 
-    let mut loggers = vec![];
-
-    let console_logger: Box<dyn SharedLogger> = TermLogger::new(
-        LevelFilter::Info,
-        conf.clone(),
-        TerminalMode::Mixed,
-        ColorChoice::Auto,
-    );
-    loggers.push(console_logger);
-
-    let mut logfile_error: Option<String> = None;
-    match get_config_string("log", None) {
-        Some(ref log_path) => {
-            let logfile = OpenOptions::new().create(true).append(true).open(log_path);
-            match logfile {
-                Ok(logfile) => {
-                    loggers.push(WriteLogger::new(LevelFilter::Info, conf, logfile));
-                }
-                Err(e) => {
-                    logfile_error = Some(format!(
-                        "Error creating/opening log file: {:?}: {:?}",
-                        log_path, e
-                    ));
-                }
-            }
-        }
-        _ => {}
-    };
-
-    CombinedLogger::init(loggers).expect("Cannot initialize logging subsystem");
-    if logfile_error.is_some() {
-        error!("{}", logfile_error.unwrap());
-        warn!("Will do console logging only...");
-    }
-}
 
 #[tokio::main]
 async fn main() {
     env::set_var("RUST_BACKTRACE", "full");
     let started = Instant::now();
-    logging_init();
+    logging::init(get_config_string("log", None));
+
     info!("🛡️ Welcome to hard (home automation rust-daemon)");
 
     //Ctrl-C / SIGTERM support
@@ -109,7 +65,7 @@ async fn main() {
     match get_config_string("host", Some("sun2000")) {
         Some(host) => {
             let worker_cancel_flag = cancel_flag.clone();
-            let mut sun2000 = Sun2000 {
+            let mut sun2000 = sun2000::Sun2000 {
                 name: "sun2000".to_string(),
                 host_port: host,
                 poll_ok: 0,

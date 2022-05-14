@@ -3,10 +3,9 @@ use chrono::Timelike;
 use chrono::{Local, LocalResult, NaiveDateTime, TimeZone};
 use io::ErrorKind;
 use simplelog::*;
-use std::fmt;
+
 use std::io;
 use std::collections::HashMap;
-use std::collections::BinaryHeap;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -15,79 +14,21 @@ use tokio::time::timeout;
 use tokio_modbus::client::Context;
 use tokio_modbus::prelude::*;
 
+use super::Result;
 use super::defs::*;
+use super::params::*;
 use futures::prelude::*;
 
-pub const SUN2000_POLL_INTERVAL_SECS: u32 = 5; //secs between polling
+pub const SUN2000_POLL_INTERVAL_SECS: u32 = 10; //secs between polling
 pub const SUN2000_STATS_DUMP_INTERVAL_SECS: f32 = 30.0; //secs between showing stats
-pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 2; //max read attempts per single parameter
-
-// Just a generic Result type to ease error handling for us. Errors in multithreaded
-// async contexts needs some extra restrictions
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ParamKind {
-    Text(Option<String>),
-    NumberU16(Option<u16>),
-    NumberI16(Option<i16>),
-    NumberU32(Option<u32>),
-    NumberI32(Option<i32>),
-}
-
-impl fmt::Display for ParamKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ParamKind::Text(v) => write!(f, "Text: {}", v.clone().unwrap()),
-            ParamKind::NumberU16(v) => write!(f, "NumberU16: {}", v.clone().unwrap()),
-            ParamKind::NumberI16(v) => write!(f, "NumberI16: {}", v.clone().unwrap()),
-            ParamKind::NumberU32(v) => write!(f, "NumberU32: {}", v.clone().unwrap()),
-            ParamKind::NumberI32(v) => write!(f, "NumberI32: {}", v.clone().unwrap()),
-        }
-    }
-}
+pub const SUN2000_ATTEMPTS_PER_PARAM: u8 = 1; //max read attempts per single parameter
 
 
-#[derive(Clone, Debug)]
-pub struct Parameter {
-    name: String,
-    value: ParamKind,
-    desc: Option<&'static str>,
-    unit: Option<&'static str>,
-    gain: u16,
-    reg_address: u16,
-    len: u16,
-    initial_read: bool,
-    save_to_influx: bool,
-}
 
 impl Parameter {
-    pub fn new(
-        name: &'static str,
-        value: ParamKind,
-        desc: Option<&'static str>,
-        unit: Option<&'static str>,
-        gain: u16,
-        reg_address: u16,
-        len: u16,
-        initial_read: bool,
-        save_to_influx: bool,
-    ) -> Self {
-        Self {
-            name: String::from(name),
-            value,
-            desc,
-            unit,
-            gain,
-            reg_address,
-            len,
-            initial_read,
-            save_to_influx,
-        }
-    }
 
     pub fn new_from_string(
-        name: String,
+        name: &'static str,
         value: ParamKind,
         desc: Option<&'static str>,
         unit: Option<&'static str>,
@@ -216,139 +157,28 @@ pub struct Sun2000 {
 }
 
 impl Sun2000 {
-    #[rustfmt::skip]
-    pub fn param_table() -> Vec<Parameter> {
-        vec![
-            Parameter::new("model_name", ParamKind::Text(None), None,  None, 1, 30000, 15, true, false),
-            Parameter::new("serial_number", ParamKind::Text(None), None,  None, 1, 30015, 10, true, false),
-            Parameter::new("product_number", ParamKind::Text(None), None,  None, 1, 30025, 10, true, false),
-            Parameter::new("model_id", ParamKind::NumberU16(None), None, None, 1, 30070, 1, true, false),
-            Parameter::new("nb_pv_strings", ParamKind::NumberU16(None), None, None, 1, 30071, 1, true, false),
-            Parameter::new("nb_mpp_tracks", ParamKind::NumberU16(None), None, None, 1, 30072, 1, true, false),
-            Parameter::new("rated_power", ParamKind::NumberU32(None), None, Some("W"), 1, 30073, 2, true, false),
-            //Parameter::new("P_max", ParamKind::NumberU32(None), None, Some("W"), 1, 30075, 2, false, false),
-            //Parameter::new("S_max", ParamKind::NumberU32(None), None, Some("VA"), 1, 30077, 2, false, false),
-            //Parameter::new("Q_max_out", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30079, 2, false, false),
-            //Parameter::new("Q_max_in", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30081, 2, false, false),
-            Parameter::new("state_1", ParamKind::NumberU16(None), None, Some("state_bitfield16"), 1, 32000, 1, false, false),
-            Parameter::new("state_2", ParamKind::NumberU16(None), None, Some("state_opt_bitfield16"), 1, 32002, 1, false, false),
-            Parameter::new("state_3", ParamKind::NumberU32(None), None, Some("state_opt_bitfield32"), 1, 32003, 2, false, false),
-            Parameter::new("alarm_1", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32008, 1, false, false),
-            Parameter::new("alarm_2", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32009, 1, false, false),
-            Parameter::new("alarm_3", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32010, 1, false, false),
-            Parameter::new("input_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32064, 2, false, true),
-            //Parameter::new("line_voltage_A_B", ParamKind::NumberU16(None), Some("grid_voltage"), Some("V"), 10, 32066, 1, false, true),
-            //Parameter::new("line_voltage_B_C", ParamKind::NumberU16(None), None, Some("V"), 10, 32067, 1, false, true),
-            //Parameter::new("line_voltage_C_A", ParamKind::NumberU16(None), None, Some("V"), 10, 32068, 1, false, true),
-            //Parameter::new("phase_A_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32069, 1, false, true),
-            //Parameter::new("phase_B_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32070, 1, false, true),
-            //Parameter::new("phase_C_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32071, 1, false, true),
-            //Parameter::new("phase_A_current", ParamKind::NumberI32(None), Some("grid_current"), Some("A"), 1000, 32072, 2, false, true),
-            //Parameter::new("phase_B_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32074, 2, false, true),
-            //Parameter::new("phase_C_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32076, 2, false, true),
-            Parameter::new("day_active_power_peak", ParamKind::NumberI32(None), None, Some("W"), 1, 32078, 2, false, true),
-            Parameter::new("active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32080, 2, false, true),
-            Parameter::new("reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 32082, 2, false, true),
-            Parameter::new("power_factor", ParamKind::NumberI16(None), None, None, 1000, 32084, 1, false, true),
-            Parameter::new("grid_frequency", ParamKind::NumberU16(None), None, Some("Hz"), 100, 32085, 1, false, true),
-            Parameter::new("efficiency", ParamKind::NumberU16(None), None, Some("%"), 100, 32086, 1, false, true),
-            Parameter::new("internal_temperature", ParamKind::NumberI16(None), None, Some("°C"), 10, 32087, 1, false, true),
-            Parameter::new("insulation_resistance", ParamKind::NumberU16(None), None, Some("MΩ"), 100, 32088, 1, false, true),
-            Parameter::new("device_status", ParamKind::NumberU16(None), None, Some("status_enum"), 1, 32089, 1, false, false),
-            Parameter::new("fault_code", ParamKind::NumberU16(None), None, None, 1, 32090, 1, false, false),
-            //Parameter::new("startup_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32091, 2, false, false),
-            //Parameter::new("shutdown_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32093, 2, false, false),
-            Parameter::new("accumulated_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32106, 2, false, true),
-            //Parameter::new("unknown_time_1", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32110, 2, false, false),
-            //Parameter::new("unknown_time_2", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32156, 2, false, false),
-            //Parameter::new("unknown_time_3", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32160, 2, false, false),
-            //Parameter::new("unknown_time_4", ParamKind::NumberU32(None), None, Some("epoch"), 1, 35113, 2, false, false),
-
-            //Parameter::new("storage_status", ParamKind::NumberI16(None), None, Some("storage_status_enum"), 1, 37000, 1, false, false),
-            Parameter::new("grid_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37101, 2, false, true),
-            //Parameter::new("grid_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37103, 2, false, true),
-            //Parameter::new("grid_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37105, 2, false, true),
-            Parameter::new("active_grid_A_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37107, 2, false, true),
-            //Parameter::new("active_grid_B_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37109, 2, false, true),
-            //Parameter::new("active_grid_C_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37111, 2, false, true),
-            Parameter::new("power_meter_active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37113, 2, false, true),
-            Parameter::new("daily_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32114, 2, false, true),
-            Parameter::new("power_meter_reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 37115, 2, false, true),
-            Parameter::new("active_grid_power_factor", ParamKind::NumberI16(None), None, None, 1000, 37117, 1, false, true),
-            Parameter::new("active_grid_frequency", ParamKind::NumberI16(None), None, Some("Hz"), 100, 37118, 1, false, true),
-            Parameter::new("grid_exported_energy", ParamKind::NumberI32(None), None, Some("kWh"), 100, 37119, 2, false, true),
-            Parameter::new("grid_accumulated_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37121, 2, false, true),
-            //Parameter::new("grid_accumulated_reactive", ParamKind::NumberU32(None), None, Some("kVarh"), 100, 37123, 2, false, true),
-            //Parameter::new("active_grid_A_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37126, 2, false, true),
-            //Parameter::new("active_grid_B_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37128, 2, false, true),
-            //Parameter::new("active_grid_C_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37130, 2, false, true),
-            //Parameter::new("active_grid_A_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37132, 2, false, true),
-            //Parameter::new("active_grid_B_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37134, 2, false, true),
-            //Parameter::new("active_grid_C_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37136, 2, false, true),
-
-            //Parameter::new("system_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40000, 2, false, false),
-            //Parameter::new("unknown_time_5", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40500, 2, false, false),
-            //Parameter::new("grid_code", ParamKind::NumberU16(None), None, Some("grid_enum"), 1, 42000, 1, false, false),
-            //Parameter::new("time_zone", ParamKind::NumberI16(None), None, Some("min"), 1, 43006, 1, false, false),
-        ]
-    }
 
     async fn read_params(
         &mut self,
         mut ctx: Context,
-        parameters: &Vec<Parameter>,
         initial_read: bool
     ) -> io::Result<(Context, Vec<Parameter>, u64)> {
 
-        let mut params: Vec<Parameter> = vec![];
-        let mut disconnected = false;
+        let start = chrono::Utc::now();
         let now = Instant::now();
 
-        let params_to_read: Vec<&Parameter> = parameters.into_iter().filter(|s| {
-            (initial_read && s.initial_read)
-                || (!initial_read
-                    && (s.save_to_influx
-                        || s.name.starts_with("state_")
-                        || s.name.starts_with("alarm_")
-                        || s.name.ends_with("_status")
-                        || s.name.ends_with("_code")))}).collect();
+        let mut params: Vec<Parameter> = vec![];
+        let mut disconnected = false;
 
-        let mut params_addr = BinaryHeap::new();
-        use std::cmp::Reverse;
-        for p in &params_to_read {
-            for addr_offset in 0 .. p.len { 
-                params_addr.push(Reverse(p.reg_address + addr_offset));
-                debug!("-> READ {} {}...", p.name, p.reg_address + addr_offset);
-            }
-        }
-
-        
-        let mut addr_span = Vec::new();
-        {
-            let mut addr_init: u16 = params_addr.pop().unwrap().0;
-            let mut addr_end: u16 = addr_init;
-            let mut addr_len = 1;
-            while !params_addr.is_empty() {
-                let addr_next: u16 = params_addr.pop().unwrap().0;
-                if addr_next == addr_end + 1 {
-                    addr_end = addr_next;
-                    addr_len = addr_len + 1;
-                    if params_addr.is_empty() {
-                        addr_span.push((addr_init, addr_len));    
-                    }
-                    continue
-                } else {
-                    addr_span.push((addr_init, addr_len));
-                    addr_init = addr_next;
-                    addr_end = addr_next;
-                    addr_len = 1;
-                }
-            }
-        }
+        let (params_to_read, addr_span) = if initial_read {
+            &*PARAMETERS_INITIAL 
+        } else {
+            &*PARAMETERS_POLL
+        };
 
         let mut value_map = HashMap::new();
 
-        for (addr_start, addr_len) in &addr_span {
+        for (addr_start, addr_len) in addr_span {
             if disconnected {
                 break;
             }
@@ -425,7 +255,7 @@ impl Sun2000 {
             debug!("MAP {} {}", a, v);
         }
 
-        for p in &params_to_read {
+        for p in params_to_read {
             let mut val2:ParamKind;
             let mut values = Vec::new();
             for addr in p.reg_address .. p.reg_address +  p.len {                
@@ -504,49 +334,11 @@ impl Sun2000 {
             ms
         );
 
+        use super::dump::*;
+        log_params(start, &params).await;
+        
+
         Ok((ctx, params, ms))
-    }
-
-    fn attribute_parser(&self, mut a: Vec<u8>) -> Result<()> {
-        //search for 'Description about the first device' (0x88)
-        if let Some(index) = a.iter().position(|&x| x == 0x88) {
-            //strip beginning bytes up to descriptor start
-            a.drain(0..=index);
-
-            //next (first) byte is len
-            let len = a[0] as usize;
-
-            //leave only the relevant descriptor string
-            a = a.drain(1..=len).collect();
-
-            //convert it to string
-            let x = String::from_utf8(a)?;
-
-            //split by semicolons
-            let split = x.split(";");
-
-            //parse and dump all attributes
-            info!(
-                "<i>{}</i>: <blue>Device Description attributes:</>",
-                self.name
-            );
-            for s in split {
-                let mut sp = s.split("=");
-                let id = sp.next();
-                let val = sp.next();
-                if id.is_none() || val.is_none() {
-                    continue;
-                }
-                info!(
-                    "<i>{}</i>: <black>{}:</> {}: <b><cyan>{}</>",
-                    self.name,
-                    id.unwrap(),
-                    get_attribute_name(id.unwrap()),
-                    val.unwrap()
-                );
-            }
-        }
-        Ok(())
     }
 
     #[rustfmt::skip]
@@ -600,11 +392,10 @@ impl Sun2000 {
                 Ok(mut ctx) => {
                     info!("<i>{}</>: connected successfully", self.name);
                     //initial parameters table
-                    let parameters = Sun2000::param_table();
                     tokio::time::sleep(Duration::from_secs(2)).await;
 
                     //obtaining all parameters from inverter
-                    let (new_ctx, params, _) = self.read_params(ctx, &parameters, true).await?;
+                    let (new_ctx, params, _) = self.read_params(ctx, true).await?;
                     ctx = new_ctx;
                     
                     for p in &params {
@@ -741,7 +532,7 @@ impl Sun2000 {
                         //obtaining all parameters from inverter
                         let now = chrono::Utc::now();
 
-                        let (new_ctx, params, ms) = self.read_params(ctx, &parameters, false).await?;
+                        let (new_ctx, params, ms) = self.read_params(ctx, false).await?;
                         ctx = new_ctx;
 
 
@@ -782,7 +573,7 @@ impl Sun2000 {
                             }
                         }
 
-                        let param_count = parameters.iter().filter(|s| s.save_to_influx ||
+                        let param_count = PARAMETERS_POLL.0.iter().filter(|s| s.save_to_influx ||
                             s.name.starts_with("state_") ||
                             s.name.starts_with("alarm_") ||
                             s.name.ends_with("_status") ||
@@ -838,19 +629,21 @@ impl Sun2000 {
                         }
 
 
-                        if let (Some(influx_url),Some(influx_org),Some(influxdb_token),Some(influxdb_bucket)) = (&self.influxdb_url, &self.influxdb_org, &self.influxdb_token, &self.influxdb_bucket) {
-                            let client = influxdb2::Client::new(influx_url, influx_org, influxdb_token);
+                        if let (Some(influx_url),Some(influx_org),Some(influxdb_token),Some(influxdb_bucket)) = (self.influxdb_url.clone(), self.influxdb_org.clone(), self.influxdb_token.clone(), self.influxdb_bucket.clone()) {
+                            tokio::spawn(async move {
+                                let client = influxdb2::Client::new(influx_url, influx_org, influxdb_token);
 
-                            let res = client.write(influxdb_bucket, stream::iter(points)).await;
+                                let res = client.write(&influxdb_bucket, stream::iter(points)).await;
 
-                            match res {
-                                Ok(msg) => {
-                                    debug!("{}: influxdb write success: {:?}", &self.name, msg);
+                                match res {
+                                    Ok(msg) => {
+                                        debug!("{}: influxdb write success: {:?}", "influx", msg);
+                                    }
+                                    Err(e) => {
+                                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", "influx", e);
+                                    }
                                 }
-                                Err(e) => {
-                                    error!("<i>{}</>: influxdb write error: <b>{:?}</>", &self.name, e);
-                                }
-                            }
+                            });
                         }
 
 
@@ -877,4 +670,48 @@ impl Sun2000 {
         info!("{}: task stopped", self.name);
         Ok(())
     }
+
+
+    fn attribute_parser(&self, mut a: Vec<u8>) -> Result<()> {
+        //search for 'Description about the first device' (0x88)
+        if let Some(index) = a.iter().position(|&x| x == 0x88) {
+            //strip beginning bytes up to descriptor start
+            a.drain(0..=index);
+
+            //next (first) byte is len
+            let len = a[0] as usize;
+
+            //leave only the relevant descriptor string
+            a = a.drain(1..=len).collect();
+
+            //convert it to string
+            let x = String::from_utf8(a)?;
+
+            //split by semicolons
+            let split = x.split(";");
+
+            //parse and dump all attributes
+            info!(
+                "<i>{}</i>: <blue>Device Description attributes:</>",
+                self.name
+            );
+            for s in split {
+                let mut sp = s.split("=");
+                let id = sp.next();
+                let val = sp.next();
+                if id.is_none() || val.is_none() {
+                    continue;
+                }
+                info!(
+                    "<i>{}</i>: <black>{}:</> {}: <b><cyan>{}</>",
+                    self.name,
+                    id.unwrap(),
+                    get_attribute_name(id.unwrap()),
+                    val.unwrap()
+                );
+            }
+        }
+        Ok(())
+    }
+
 }
