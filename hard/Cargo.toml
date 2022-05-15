@@ -10,7 +10,7 @@ edition = "2018"
 rust-ini = "0.10.3"
 ctrlc = { version = "3.1.0", features = ["termination"] }
 log = "0.4.1"
-simplelog = { version = "0.11.2", features = ["paris", "ansi_term"] }
+simplelog = { version = "0.11.2", features = ["ansi_term"] }
 futures = "0.3"
 tokio = { version = "1.18.2", features = ["full"] }
 chrono = { version = "0.4.11", features = ["serde"] }

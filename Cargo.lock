@@ -720,17 +720,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
- "futures",
- "influxdb2",
- "is_sorted",
- "lazy_static",
  "log",
  "postcard",
- "serde",
  "simplelog",
  "sun2000",
- "tokio",
- "tokio-modbus",
 ]
 
 [[package]]
