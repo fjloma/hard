@@ -1,1 +1,7 @@
 /target
+hard/target
+sun2000/target
+logparser/target
+/hard.log
+hard.conf
+*.bin

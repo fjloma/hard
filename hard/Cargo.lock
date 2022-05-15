@@ -453,6 +453,7 @@ name = "hard"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "clap",
  "ctrlc",
  "futures",
  "humantime",
@@ -464,7 +465,6 @@ dependencies = [
  "rust-ini",
  "serde",
  "simplelog",
- "sun2000",
  "tokio",
  "tokio-modbus",
 ]
@@ -712,25 +712,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "abb12e687cfb44aa40f41fc3978ef76448f9b6038cad6aef4259d3c095a2382e"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "logparser"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clap",
- "futures",
- "influxdb2",
- "is_sorted",
- "lazy_static",
- "log",
- "postcard",
- "serde",
- "simplelog",
- "sun2000",
- "tokio",
- "tokio-modbus",
 ]
 
 [[package]]
@@ -1322,23 +1303,6 @@ name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
-
-[[package]]
-name = "sun2000"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "futures",
- "influxdb2",
- "is_sorted",
- "lazy_static",
- "log",
- "postcard",
- "serde",
- "simplelog",
- "tokio",
- "tokio-modbus",
-]
 
 [[package]]
 name = "syn"
