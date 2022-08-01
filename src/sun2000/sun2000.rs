@@ -59,6 +59,7 @@ pub struct Parameter {
     len: u16,
     initial_read: bool,
     save_to_influx: bool,
+    save_to_local_influx: bool,
 }
 
 impl Parameter {
@@ -72,6 +73,7 @@ impl Parameter {
         len: u16,
         initial_read: bool,
         save_to_influx: bool,
+        save_to_local_influx: bool,
     ) -> Self {
         Self {
             name: String::from(name),
@@ -83,6 +85,7 @@ impl Parameter {
             len,
             initial_read,
             save_to_influx,
+            save_to_local_influx
         }
     }
 
@@ -96,6 +99,7 @@ impl Parameter {
         len: u16,
         initial_read: bool,
         save_to_influx: bool,
+        save_to_local_influx: bool,
     ) -> Self {
         Self {
             name,
@@ -107,6 +111,7 @@ impl Parameter {
             len,
             initial_read,
             save_to_influx,
+            save_to_local_influx,
         }
     }
 
@@ -209,6 +214,8 @@ pub struct Sun2000 {
     pub influxdb_org: Option<String>,
     pub influxdb_token: Option<String>,
     pub influxdb_bucket: Option<String>,
+    pub local_influxdb_url: Option<String>,
+    pub local_influxdb_org: Option<String>,
     pub mode_change_script: Option<String>,
     pub optimizers: bool,
     pub battery_installed: bool,
@@ -219,77 +226,77 @@ impl Sun2000 {
     #[rustfmt::skip]
     pub fn param_table() -> Vec<Parameter> {
         vec![
-            Parameter::new("model_name", ParamKind::Text(None), None,  None, 1, 30000, 15, true, false),
-            Parameter::new("serial_number", ParamKind::Text(None), None,  None, 1, 30015, 10, true, false),
-            Parameter::new("product_number", ParamKind::Text(None), None,  None, 1, 30025, 10, true, false),
-            Parameter::new("model_id", ParamKind::NumberU16(None), None, None, 1, 30070, 1, true, false),
-            Parameter::new("nb_pv_strings", ParamKind::NumberU16(None), None, None, 1, 30071, 1, true, false),
-            Parameter::new("nb_mpp_tracks", ParamKind::NumberU16(None), None, None, 1, 30072, 1, true, false),
-            Parameter::new("rated_power", ParamKind::NumberU32(None), None, Some("W"), 1, 30073, 2, true, false),
-            //Parameter::new("P_max", ParamKind::NumberU32(None), None, Some("W"), 1, 30075, 2, false, false),
-            //Parameter::new("S_max", ParamKind::NumberU32(None), None, Some("VA"), 1, 30077, 2, false, false),
-            //Parameter::new("Q_max_out", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30079, 2, false, false),
-            //Parameter::new("Q_max_in", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30081, 2, false, false),
-            Parameter::new("state_1", ParamKind::NumberU16(None), None, Some("state_bitfield16"), 1, 32000, 1, false, false),
-            Parameter::new("state_2", ParamKind::NumberU16(None), None, Some("state_opt_bitfield16"), 1, 32002, 1, false, false),
-            Parameter::new("state_3", ParamKind::NumberU32(None), None, Some("state_opt_bitfield32"), 1, 32003, 2, false, false),
-            Parameter::new("alarm_1", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32008, 1, false, false),
-            Parameter::new("alarm_2", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32009, 1, false, false),
-            Parameter::new("alarm_3", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32010, 1, false, false),
-            Parameter::new("input_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32064, 2, false, true),
-            //Parameter::new("line_voltage_A_B", ParamKind::NumberU16(None), Some("grid_voltage"), Some("V"), 10, 32066, 1, false, true),
-            //Parameter::new("line_voltage_B_C", ParamKind::NumberU16(None), None, Some("V"), 10, 32067, 1, false, true),
-            //Parameter::new("line_voltage_C_A", ParamKind::NumberU16(None), None, Some("V"), 10, 32068, 1, false, true),
-            //Parameter::new("phase_A_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32069, 1, false, true),
-            //Parameter::new("phase_B_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32070, 1, false, true),
-            //Parameter::new("phase_C_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32071, 1, false, true),
-            //Parameter::new("phase_A_current", ParamKind::NumberI32(None), Some("grid_current"), Some("A"), 1000, 32072, 2, false, true),
-            //Parameter::new("phase_B_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32074, 2, false, true),
-            //Parameter::new("phase_C_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32076, 2, false, true),
-            Parameter::new("day_active_power_peak", ParamKind::NumberI32(None), None, Some("W"), 1, 32078, 2, false, true),
-            Parameter::new("active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32080, 2, false, true),
-            Parameter::new("reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 32082, 2, false, true),
-            Parameter::new("power_factor", ParamKind::NumberI16(None), None, None, 1000, 32084, 1, false, true),
-            Parameter::new("grid_frequency", ParamKind::NumberU16(None), None, Some("Hz"), 100, 32085, 1, false, true),
-            Parameter::new("efficiency", ParamKind::NumberU16(None), None, Some("%"), 100, 32086, 1, false, true),
-            Parameter::new("internal_temperature", ParamKind::NumberI16(None), None, Some("°C"), 10, 32087, 1, false, true),
-            Parameter::new("insulation_resistance", ParamKind::NumberU16(None), None, Some("MΩ"), 100, 32088, 1, false, true),
-            Parameter::new("device_status", ParamKind::NumberU16(None), None, Some("status_enum"), 1, 32089, 1, false, false),
-            Parameter::new("fault_code", ParamKind::NumberU16(None), None, None, 1, 32090, 1, false, false),
-            //Parameter::new("startup_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32091, 2, false, false),
-            //Parameter::new("shutdown_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32093, 2, false, false),
-            Parameter::new("accumulated_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32106, 2, false, true),
-            //Parameter::new("unknown_time_1", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32110, 2, false, false),
-            //Parameter::new("unknown_time_2", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32156, 2, false, false),
-            //Parameter::new("unknown_time_3", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32160, 2, false, false),
-            //Parameter::new("unknown_time_4", ParamKind::NumberU32(None), None, Some("epoch"), 1, 35113, 2, false, false),
+            Parameter::new("model_name", ParamKind::Text(None), None,  None, 1, 30000, 15, true, false, false),
+            Parameter::new("serial_number", ParamKind::Text(None), None,  None, 1, 30015, 10, true, false, false),
+            Parameter::new("product_number", ParamKind::Text(None), None,  None, 1, 30025, 10, true, false, false),
+            Parameter::new("model_id", ParamKind::NumberU16(None), None, None, 1, 30070, 1, true, false, false),
+            Parameter::new("nb_pv_strings", ParamKind::NumberU16(None), None, None, 1, 30071, 1, true, false, false),
+            Parameter::new("nb_mpp_tracks", ParamKind::NumberU16(None), None, None, 1, 30072, 1, true, false, false),
+            Parameter::new("rated_power", ParamKind::NumberU32(None), None, Some("W"), 1, 30073, 2, true, false, false),
+            //Parameter::new("P_max", ParamKind::NumberU32(None), None, Some("W"), 1, 30075, 2, false, false, false),
+            //Parameter::new("S_max", ParamKind::NumberU32(None), None, Some("VA"), 1, 30077, 2, false, false, false),
+            //Parameter::new("Q_max_out", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30079, 2, false, false, false),
+            //Parameter::new("Q_max_in", ParamKind::NumberI32(None), None, Some("VAr"), 1, 30081, 2, false, false, false),
+            Parameter::new("state_1", ParamKind::NumberU16(None), None, Some("state_bitfield16"), 1, 32000, 1, false, false, false),
+            Parameter::new("state_2", ParamKind::NumberU16(None), None, Some("state_opt_bitfield16"), 1, 32002, 1, false, false, false),
+            Parameter::new("state_3", ParamKind::NumberU32(None), None, Some("state_opt_bitfield32"), 1, 32003, 2, false, false, false),
+            Parameter::new("alarm_1", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32008, 1, false, false, false),
+            Parameter::new("alarm_2", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32009, 1, false, false, false),
+            Parameter::new("alarm_3", ParamKind::NumberU16(None), None, Some("alarm_bitfield16"), 1, 32010, 1, false, false, false),
+            Parameter::new("input_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32064, 2, false, true, false),
+            //Parameter::new("line_voltage_A_B", ParamKind::NumberU16(None), Some("grid_voltage"), Some("V"), 10, 32066, 1, false, true, false),
+            //Parameter::new("line_voltage_B_C", ParamKind::NumberU16(None), None, Some("V"), 10, 32067, 1, false, true, false),
+            //Parameter::new("line_voltage_C_A", ParamKind::NumberU16(None), None, Some("V"), 10, 32068, 1, false, true, false),
+            //Parameter::new("phase_A_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32069, 1, false, true, false),
+            //Parameter::new("phase_B_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32070, 1, false, true, false),
+            //Parameter::new("phase_C_voltage", ParamKind::NumberU16(None), None, Some("V"), 10, 32071, 1, false, true, false),
+            //Parameter::new("phase_A_current", ParamKind::NumberI32(None), Some("grid_current"), Some("A"), 1000, 32072, 2, false, true, false),
+            //Parameter::new("phase_B_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32074, 2, false, true, false),
+            //Parameter::new("phase_C_current", ParamKind::NumberI32(None), None, Some("A"), 1000, 32076, 2, false, true, false),
+            Parameter::new("day_active_power_peak", ParamKind::NumberI32(None), None, Some("W"), 1, 32078, 2, false, true, false),
+            Parameter::new("active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 32080, 2, false, true, false),
+            Parameter::new("reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 32082, 2, false, true, false),
+            Parameter::new("power_factor", ParamKind::NumberI16(None), None, None, 1000, 32084, 1, false, true, false),
+            Parameter::new("grid_frequency", ParamKind::NumberU16(None), None, Some("Hz"), 100, 32085, 1, false, true, false),
+            Parameter::new("efficiency", ParamKind::NumberU16(None), None, Some("%"), 100, 32086, 1, false, true, false),
+            Parameter::new("internal_temperature", ParamKind::NumberI16(None), None, Some("°C"), 10, 32087, 1, false, true, false),
+            Parameter::new("insulation_resistance", ParamKind::NumberU16(None), None, Some("MΩ"), 100, 32088, 1, false, true, false),
+            Parameter::new("device_status", ParamKind::NumberU16(None), None, Some("status_enum"), 1, 32089, 1, false, false, false),
+            Parameter::new("fault_code", ParamKind::NumberU16(None), None, None, 1, 32090, 1, false, false, false),
+            //Parameter::new("startup_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32091, 2, false, false, false),
+            //Parameter::new("shutdown_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32093, 2, false, false, false),
+            Parameter::new("accumulated_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32106, 2, false, true, true),
+            //Parameter::new("unknown_time_1", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32110, 2, false, false, false),
+            //Parameter::new("unknown_time_2", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32156, 2, false, false, false),
+            //Parameter::new("unknown_time_3", ParamKind::NumberU32(None), None, Some("epoch"), 1, 32160, 2, false, false, false),
+            //Parameter::new("unknown_time_4", ParamKind::NumberU32(None), None, Some("epoch"), 1, 35113, 2, false, false, false),
 
-            //Parameter::new("storage_status", ParamKind::NumberI16(None), None, Some("storage_status_enum"), 1, 37000, 1, false, false),
-            Parameter::new("grid_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37101, 2, false, true),
-            //Parameter::new("grid_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37103, 2, false, true),
-            //Parameter::new("grid_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37105, 2, false, true),
-            Parameter::new("active_grid_A_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37107, 2, false, true),
-            //Parameter::new("active_grid_B_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37109, 2, false, true),
-            //Parameter::new("active_grid_C_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37111, 2, false, true),
-            Parameter::new("power_meter_active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37113, 2, false, true),
-            Parameter::new("daily_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32114, 2, false, true),
-            Parameter::new("power_meter_reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 37115, 2, false, true),
-            Parameter::new("active_grid_power_factor", ParamKind::NumberI16(None), None, None, 1000, 37117, 1, false, true),
-            Parameter::new("active_grid_frequency", ParamKind::NumberI16(None), None, Some("Hz"), 100, 37118, 1, false, true),
-            Parameter::new("grid_exported_energy", ParamKind::NumberI32(None), None, Some("kWh"), 100, 37119, 2, false, true),
-            Parameter::new("grid_accumulated_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37121, 2, false, true),
-            //Parameter::new("grid_accumulated_reactive", ParamKind::NumberU32(None), None, Some("kVarh"), 100, 37123, 2, false, true),
-            //Parameter::new("active_grid_A_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37126, 2, false, true),
-            //Parameter::new("active_grid_B_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37128, 2, false, true),
-            //Parameter::new("active_grid_C_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37130, 2, false, true),
-            //Parameter::new("active_grid_A_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37132, 2, false, true),
-            //Parameter::new("active_grid_B_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37134, 2, false, true),
-            //Parameter::new("active_grid_C_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37136, 2, false, true),
+            //Parameter::new("storage_status", ParamKind::NumberI16(None), None, Some("storage_status_enum"), 1, 37000, 1, false, false, false),
+            Parameter::new("grid_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37101, 2, false, true, false),
+            //Parameter::new("grid_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37103, 2, false, true, false),
+            //Parameter::new("grid_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37105, 2, false, true, false),
+            Parameter::new("active_grid_A_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37107, 2, false, true, false),
+            //Parameter::new("active_grid_B_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37109, 2, false, true, false),
+            //Parameter::new("active_grid_C_current", ParamKind::NumberI32(None), None, Some("I"), 100, 37111, 2, false, true, false),
+            Parameter::new("power_meter_active_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37113, 2, false, true, false),
+            Parameter::new("daily_yield_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 32114, 2, false, true, false),
+            Parameter::new("power_meter_reactive_power", ParamKind::NumberI32(None), None, Some("VA"), 1, 37115, 2, false, true, false),
+            Parameter::new("active_grid_power_factor", ParamKind::NumberI16(None), None, None, 1000, 37117, 1, false, true, false),
+            Parameter::new("active_grid_frequency", ParamKind::NumberI16(None), None, Some("Hz"), 100, 37118, 1, false, true, false),
+            Parameter::new("grid_exported_energy", ParamKind::NumberI32(None), None, Some("kWh"), 100, 37119, 2, false, true, true),
+            Parameter::new("grid_accumulated_energy", ParamKind::NumberU32(None), None, Some("kWh"), 100, 37121, 2, false, true, true),
+            //Parameter::new("grid_accumulated_reactive", ParamKind::NumberU32(None), None, Some("kVarh"), 100, 37123, 2, false, true, false),
+            //Parameter::new("active_grid_A_B_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37126, 2, false, true, false),
+            //Parameter::new("active_grid_B_C_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37128, 2, false, true, false),
+            //Parameter::new("active_grid_C_A_voltage", ParamKind::NumberI32(None), None, Some("V"), 10, 37130, 2, false, true, false),
+            //Parameter::new("active_grid_A_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37132, 2, false, true, false),
+            //Parameter::new("active_grid_B_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37134, 2, false, true, false),
+            //Parameter::new("active_grid_C_power", ParamKind::NumberI32(None), None, Some("W"), 1, 37136, 2, false, true, false),
 
-            //Parameter::new("system_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40000, 2, false, false),
-            //Parameter::new("unknown_time_5", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40500, 2, false, false),
-            //Parameter::new("grid_code", ParamKind::NumberU16(None), None, Some("grid_enum"), 1, 42000, 1, false, false),
-            //Parameter::new("time_zone", ParamKind::NumberI16(None), None, Some("min"), 1, 43006, 1, false, false),
+            //Parameter::new("system_time", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40000, 2, false, false, false),
+            //Parameter::new("unknown_time_5", ParamKind::NumberU32(None), None, Some("epoch"), 1, 40500, 2, false, false, false),
+            //Parameter::new("grid_code", ParamKind::NumberU16(None), None, Some("grid_enum"), 1, 42000, 1, false, false, false),
+            //Parameter::new("time_zone", ParamKind::NumberI16(None), None, Some("min"), 1, 43006, 1, false, false, false),
         ]
     }
 
@@ -490,6 +497,7 @@ impl Sun2000 {
                     p.len,
                     p.initial_read,
                     p.save_to_influx,
+                    p.save_to_local_influx
                 );
                 params.push(param.clone());
             }
@@ -567,6 +575,8 @@ impl Sun2000 {
             alarm_3: None,
             fault_code: None,
         };
+
+        let mut local_influx_last_values: HashMap<String, ParamKind> =  HashMap::new();
 
         loop {
             if terminated || worker_cancel_flag.load(Ordering::SeqCst) {
@@ -795,63 +805,147 @@ impl Sun2000 {
                             self.poll_ok = self.poll_ok + 1;
                         }
 
-                        let mut point = influxdb2::models::DataPoint::builder("inverter");
+                        {
+                            // save to influx
+                            let mut point = influxdb2::models::DataPoint::builder("inverter").timestamp(now.timestamp_nanos());;
 
-                        for p in &params {
-                            if p.save_to_influx {
-                                point = point.field(p.name.clone(), p.get_influx_value());
-                            }
-                        }
-
-                        let mut points = vec![point.build()?];
-
-                                        
-                        //save query time                
-                        points.push(influxdb2::models::DataPoint::builder("inverter_query_time")
-                            .field("value", ms as i64)
-                            .field("param_count", param_count as i64).build()?);
-                                        
-
-                        //setting new inverter state/alarm
-                        let mut state_changes = HashMap::new();
-                        state.set_new_status(
-                            &self.name,
-                            device_status,
-                            storage_status,
-                            grid_code,
-                            state_1,
-                            state_2,
-                            state_3,
-                            alarm_1,
-                            alarm_2,
-                            alarm_3,
-                            fault_code,
-                            &mut state_changes
-                        );
-
-                        if !state_changes.is_empty() {
-                            let mut point = influxdb2::models::DataPoint::builder("inverter_status").timestamp(now.timestamp_nanos());
-                            for (state_key, state_str) in state_changes.iter() {
-                                point = point.field((*state_key).clone(), (*state_str).clone());
-                            }
-                            points.push(point.build()?);
-                        }
-
-
-                        if let (Some(influx_url),Some(influx_org),Some(influxdb_token),Some(influxdb_bucket)) = (&self.influxdb_url, &self.influxdb_org, &self.influxdb_token, &self.influxdb_bucket) {
-                            let client = influxdb2::Client::new(influx_url, influx_org, influxdb_token);
-
-                            let res = client.write(influxdb_bucket, stream::iter(points)).await;
-
-                            match res {
-                                Ok(msg) => {
-                                    debug!("{}: influxdb write success: {:?}", &self.name, msg);
-                                }
-                                Err(e) => {
-                                    error!("<i>{}</>: influxdb write error: <b>{:?}</>", &self.name, e);
+                            for p in &params {
+                                if p.save_to_influx {
+                                    point = point.field(p.name.clone(), p.get_influx_value());
+                                    
                                 }
                             }
+
+                            let mut points = vec![point.build()?];
+
+                                            
+                            //save query time                
+                            points.push(influxdb2::models::DataPoint::builder("inverter_query_time")
+                                .field("value", ms as i64)
+                                .field("param_count", param_count as i64).build()?);
+                                            
+
+                            //setting new inverter state/alarm
+                            let mut state_changes = HashMap::new();
+                            state.set_new_status(
+                                &self.name,
+                                device_status,
+                                storage_status,
+                                grid_code,
+                                state_1,
+                                state_2,
+                                state_3,
+                                alarm_1,
+                                alarm_2,
+                                alarm_3,
+                                fault_code,
+                                &mut state_changes
+                            );
+
+                            if !state_changes.is_empty() {
+                                let mut point = influxdb2::models::DataPoint::builder("inverter_status").timestamp(now.timestamp_nanos());
+                                for (state_key, state_str) in state_changes.iter() {
+                                    point = point.field((*state_key).clone(), (*state_str).clone());
+                                }
+                                points.push(point.build()?);
+                            }
+
+
+                            if let (Some(influx_url),Some(influx_org),Some(influxdb_token),Some(influxdb_bucket)) = (&self.influxdb_url, &self.influxdb_org, &self.influxdb_token, &self.influxdb_bucket) {
+                                let client = influxdb2::Client::new(influx_url, influx_org, influxdb_token);
+
+                                let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                match res {
+                                    Ok(msg) => {
+                                        debug!("{}: influxdb write success: {:?}", &self.name, msg);
+                                    }
+                                    Err(e) => {
+                                        error!("<i>{}</>: influxdb write error: <b>{:?}</>", &self.name, e);
+                                    }
+                                }
+                            }
                         }
+
+                        {
+                            // local influxdb
+                            
+                            let mut changes =  false;
+
+                            let last_minute = local_influx_last_values.get("minute").unwrap_or(&ParamKind::NumberU32(Some(0xffffffff))).clone();
+                            let last_hour = local_influx_last_values.get("hour").unwrap_or(&ParamKind::NumberU32(Some(0xffffffff))).clone();
+                            let current_minute = ParamKind::NumberU32(Some(now.minute()  / 5)); // each 5 minutes
+                            let current_hour = ParamKind::NumberU32(Some(now.hour()));
+                            // Force write on minute change
+
+                            local_influx_last_values.insert("minute".to_string(), current_minute.clone());
+                            local_influx_last_values.insert("hour".to_string(), current_hour.clone());
+                            
+                            
+                            if last_hour != current_hour {
+                                changes = true;
+                                let prev_hour = now.with_minute(59).unwrap().with_hour(now.hour() - 1 ).unwrap().with_second(59).unwrap();
+                                let mut point_prev = influxdb2::models::DataPoint::builder("inverter").timestamp(prev_hour.timestamp_nanos());
+                                
+                                for p in &params {
+                                    if p.save_to_local_influx {
+                                        point_prev = point_prev.field(p.name.clone(), p.get_influx_value());
+                                    }
+                                }
+
+                                let points = vec![point_prev.build()?];
+
+                                if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
+                                    let client = influxdb2::Client::new(influx_url, "", "");
+
+                                    let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                    match res {
+                                        Ok(msg) => {
+                                            debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                        }
+                                        Err(e) => {
+                                            error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                        }
+                                    }
+                                }
+
+
+                            } else {
+                                changes = last_minute != current_minute ;
+                            }
+
+
+                            if changes {
+                                let mut point = influxdb2::models::DataPoint::builder("inverter").timestamp(now.timestamp_nanos());;
+                                for p in &params {
+                                    if p.save_to_local_influx {
+                                        point = point.field(p.name.clone(), p.get_influx_value());
+                                        /*if !changes && local_influx_last_values.contains_key(&p.name) {
+                                            changes = changes || p.value != *local_influx_last_values.get(&p.name).unwrap();
+                                        }
+                                        local_influx_last_values.insert(p.name.clone(), p.value.clone());*/
+                                    }
+                                }
+                                let points = vec![point.build()?];
+
+                                if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
+                                    let client = influxdb2::Client::new(influx_url, "", "");
+
+                                    let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                    match res {
+                                        Ok(msg) => {
+                                            debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                        }
+                                        Err(e) => {
+                                            error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                        }
+                                    }
+                                }
+                            }
+                        }   
+
 
 
                         //process obtained parameters

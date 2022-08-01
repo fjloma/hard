@@ -118,6 +118,8 @@ async fn main() {
                 influxdb_org: get_config_string("influxdb_org", None),
                 influxdb_token: get_config_string("influxdb_token", None),
                 influxdb_bucket: get_config_string("influxdb_bucket", None),
+                local_influxdb_url: get_config_string("local_influxdb_url", None),
+                local_influxdb_org: get_config_string("local_influxdb_org", None),
                 mode_change_script: get_config_string("mode_change_script", Some("sun2000")),
                 optimizers: get_config_bool("optimizers", Some("sun2000")),
                 battery_installed: get_config_bool("battery_installed", Some("sun2000")),
