@@ -884,28 +884,31 @@ impl Sun2000 {
                             
                             if last_hour != current_hour {
                                 changes = true;
-                                let prev_hour = now.with_minute(59).unwrap().with_hour(now.hour() - 1 ).unwrap().with_second(59).unwrap();
-                                let mut point_prev = influxdb2::models::DataPoint::builder("inverter").timestamp(prev_hour.timestamp_nanos());
-                                
-                                for p in &params {
-                                    if p.save_to_local_influx {
-                                        point_prev = point_prev.field(p.name.clone(), p.get_influx_value());
-                                    }
-                                }
 
-                                let points = vec![point_prev.build()?];
-
-                                if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
-                                    let client = influxdb2::Client::new(influx_url, "", "");
-
-                                    let res = client.write(influxdb_bucket, stream::iter(points)).await;
-
-                                    match res {
-                                        Ok(msg) => {
-                                            debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                if now.hour() > 0 {
+                                    let prev_hour = now.with_minute(59).unwrap().with_hour(now.hour() - 1 ).unwrap().with_second(59).unwrap();
+                                    let mut point_prev = influxdb2::models::DataPoint::builder("inverter").timestamp(prev_hour.timestamp_nanos());
+                                    
+                                    for p in &params {
+                                        if p.save_to_local_influx {
+                                            point_prev = point_prev.field(p.name.clone(), p.get_influx_value());
                                         }
-                                        Err(e) => {
-                                            error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                    }
+
+                                    let points = vec![point_prev.build()?];
+
+                                    if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
+                                        let client = influxdb2::Client::new(influx_url, "", "");
+
+                                        let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                        match res {
+                                            Ok(msg) => {
+                                                debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                            }
+                                            Err(e) => {
+                                                error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                            }
                                         }
                                     }
                                 }
