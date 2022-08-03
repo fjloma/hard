@@ -47,6 +47,46 @@ impl fmt::Display for ParamKind {
     }
 }
 
+impl ParamKind {
+
+    pub fn get_influx_value(&self, gain: u16) -> influxdb2::models::FieldValue {
+        match &self {
+            ParamKind::Text(Some(v)) => {
+                return influxdb2::models::FieldValue::String((*v).clone());
+            }
+            ParamKind::NumberU16(Some(v)) => {
+                if gain != 1 {
+                    return (*v as f64 / gain as f64).into();
+                } else {
+                    return (*v as i64).into();
+                }
+            }
+            ParamKind::NumberI16(Some(v)) => {
+                if gain != 1 {
+                    return (*v as f64 / gain as f64).into();
+                } else {
+                    return (*v as i64).into();
+                }
+            }
+            ParamKind::NumberU32(Some(v)) => {
+                if gain != 1 {
+                    return (*v as f64 / gain as f64).into();
+                } else {
+                    return (*v as i64).into();
+                }
+            }
+            ParamKind::NumberI32(Some(v)) => {
+                if gain != 1 {
+                    return (*v as f64 / gain as f64).into();
+                } else {
+                    return (*v as i64).into();
+                }
+            }
+            _ => {panic!("{:?}", self)}
+        }
+    }
+}
+
 
 #[derive(Clone, Debug)]
 pub struct Parameter {
@@ -167,40 +207,7 @@ impl Parameter {
     }
 
     pub fn get_influx_value(&self) -> influxdb2::models::FieldValue {
-        match &self.value {
-            ParamKind::Text(Some(v)) => {
-                return influxdb2::models::FieldValue::String((*v).clone());
-            }
-            ParamKind::NumberU16(Some(v)) => {
-                if self.gain != 1 {
-                    return (*v as f64 / self.gain as f64).into();
-                } else {
-                    return (*v as i64).into();
-                }
-            }
-            ParamKind::NumberI16(Some(v)) => {
-                if self.gain != 1 {
-                    return (*v as f64 / self.gain as f64).into();
-                } else {
-                    return (*v as i64).into();
-                }
-            }
-            ParamKind::NumberU32(Some(v)) => {
-                if self.gain != 1 {
-                    return (*v as f64 / self.gain as f64).into();
-                } else {
-                    return (*v as i64).into();
-                }
-            }
-            ParamKind::NumberI32(Some(v)) => {
-                if self.gain != 1 {
-                    return (*v as f64 / self.gain as f64).into();
-                } else {
-                    return (*v as i64).into();
-                }
-            }
-            _ => {panic!("{:?}", self)}
-        }
+        self.value.get_influx_value(self.gain)
     }
 }
 
@@ -885,13 +892,95 @@ impl Sun2000 {
                             if last_hour != current_hour {
                                 changes = true;
 
+                                // Balance table
+                                let mut grid_exported_energy = None;
+                                let mut grid_accumulated_energy = None;
+                                let mut solar = None;
+                                for p in &params {
+                                    if p.save_to_local_influx && p.name == "accumulated_yield_energy" {
+                                        if local_influx_last_values.contains_key("accumulated_yield_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("accumulated_yield_energy").unwrap().get_influx_value(p.gain) {
+                                                    solar = Some(vnow-vlast);
+                                                }
+                                            }
+                                        }
+                                        local_influx_last_values.insert("accumulated_yield_energy".to_string(), p.value.clone());
+                                    }
+                                    if p.save_to_local_influx && p.name == "grid_exported_energy" {
+                                        if local_influx_last_values.contains_key("grid_exported_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_exported_energy").unwrap().get_influx_value(p.gain) {
+                                                    grid_exported_energy = Some(vnow-vlast);
+                                                }
+                                            }
+                                        }
+                                        local_influx_last_values.insert("grid_exported_energy".to_string(), p.value.clone());
+                                    }
+                                    if p.save_to_local_influx && p.name == "grid_accumulated_energy" {
+                                        if local_influx_last_values.contains_key("grid_accumulated_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_accumulated_energy").unwrap().get_influx_value(p.gain) {
+                                                    grid_accumulated_energy = Some(vnow-vlast);
+                                                }
+                                            }
+                                        }
+                                        local_influx_last_values.insert("grid_accumulated_energy".to_string(), p.value.clone());
+                                    }
+                                }
+
+                                let mut point_balance = influxdb2::models::DataPoint::builder("balance_test").timestamp(now.timestamp_nanos());
+                                if let (Some(grid_export), Some(grid_acc), Some(sol)) = (grid_exported_energy, grid_accumulated_energy, solar) {
+                                    let bal = grid_export - grid_acc;
+                                    let (expo, impo) = if bal > 0.0 {
+                                        (bal, 0.0)
+                                    } else {
+                                        (0.0, -bal)
+                                    };
+
+                                    let auto = sol - expo;
+                                    let consumo = auto + impo;
+                                    point_balance = point_balance.field("sol", influxdb2::models::FieldValue::from(sol));
+                                    point_balance = point_balance.field("expo", influxdb2::models::FieldValue::from(expo));
+                                    point_balance = point_balance.field("impo", influxdb2::models::FieldValue::from(impo));
+                                    point_balance = point_balance.field("auto", influxdb2::models::FieldValue::from(auto));
+                                    point_balance = point_balance.field("consumo", influxdb2::models::FieldValue::from(consumo));
+
+                                    let points = vec![point_balance.build()?];
+
+                                    if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
+                                        let client = influxdb2::Client::new(influx_url, "", "");
+
+                                        let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                        match res {
+                                            Ok(msg) => {
+                                                debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                            }
+                                            Err(e) => {
+                                                error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                            }
+                                        }
+                                    }
+                                }
+
+
                                 if now.hour() > 0 {
                                     let prev_hour = now.with_minute(59).unwrap().with_hour(now.hour() - 1 ).unwrap().with_second(59).unwrap();
                                     let mut point_prev = influxdb2::models::DataPoint::builder("inverter").timestamp(prev_hour.timestamp_nanos());
                                     
+
                                     for p in &params {
                                         if p.save_to_local_influx {
                                             point_prev = point_prev.field(p.name.clone(), p.get_influx_value());
+
+                                            if p.name == "accumulated_yield_energy" {
+                                                if local_influx_last_values.contains_key("accumulated_yield_energy") {
+                                                    let delta = local_influx_last_values.get("accumulated_yield_energy").unwrap().get_influx_value(p.gain);
+                                                    
+                                                    point_prev = point_prev.field(p.name.clone(), p.get_influx_value());
+                                                }
+                                            }
                                         }
                                     }
 
@@ -916,6 +1005,77 @@ impl Sun2000 {
 
                             } else {
                                 changes = last_minute != current_minute ;
+                                if now.hour() < 23 {
+                                    let next_hour = now.with_minute(00).unwrap().with_hour(now.hour() + 1 ).unwrap().with_second(00).unwrap().with_nanosecond(0).unwrap();
+                                    let mut point_balance = influxdb2::models::DataPoint::builder("balance_test").timestamp(next_hour.timestamp_nanos());
+
+                                    // Balance table
+                                    let mut grid_exported_energy = None;
+                                    let mut grid_accumulated_energy = None;
+                                    let mut solar = None;
+                                    for p in &params {
+                                        if p.save_to_local_influx && p.name == "accumulated_yield_energy" {
+                                            if local_influx_last_values.contains_key("accumulated_yield_energy") {
+                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("accumulated_yield_energy").unwrap().get_influx_value(p.gain) {
+                                                        solar = Some(vnow-vlast);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if p.save_to_local_influx && p.name == "grid_exported_energy" {
+                                            if local_influx_last_values.contains_key("grid_exported_energy") {
+                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_exported_energy").unwrap().get_influx_value(p.gain) {
+                                                        grid_exported_energy = Some(vnow-vlast);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if p.save_to_local_influx && p.name == "grid_accumulated_energy" {
+                                            if local_influx_last_values.contains_key("grid_accumulated_energy") {
+                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_accumulated_energy").unwrap().get_influx_value(p.gain) {
+                                                        grid_accumulated_energy = Some(vnow-vlast);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if let (Some(grid_export), Some(grid_acc), Some(sol)) = (grid_exported_energy, grid_accumulated_energy, solar) {
+                                        let bal = grid_export - grid_acc;
+                                        let (expo, impo) = if bal > 0.0 {
+                                            (bal, 0.0)
+                                        } else {
+                                            (0.0, -bal)
+                                        };
+
+                                        let auto = sol - expo;
+                                        let consumo = auto + impo;
+                                        point_balance = point_balance.field("sol", influxdb2::models::FieldValue::from(sol));
+                                        point_balance = point_balance.field("expo", influxdb2::models::FieldValue::from(expo));
+                                        point_balance = point_balance.field("impo", influxdb2::models::FieldValue::from(impo));
+                                        point_balance = point_balance.field("auto", influxdb2::models::FieldValue::from(auto));
+                                        point_balance = point_balance.field("consumo", influxdb2::models::FieldValue::from(consumo));
+
+                                        let points = vec![point_balance.build()?];
+
+                                        if let (Some(influx_url),Some(influx_org),Some(influxdb_bucket)) = (&self.local_influxdb_url, &self.local_influxdb_org, &self.influxdb_bucket) {
+                                            let client = influxdb2::Client::new(influx_url, "", "");
+
+                                            let res = client.write(influxdb_bucket, stream::iter(points)).await;
+
+                                            match res {
+                                                Ok(msg) => {
+                                                    debug!("{}: local influxdb write success: {:?}", &self.name, msg);
+                                                }
+                                                Err(e) => {
+                                                    error!("<i>{}</>: local influxdb write error: <b>{:?}</>", &self.name, e);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
 
