@@ -967,7 +967,7 @@ impl Sun2000 {
                                 }
 
 
-                                if now.hour() > 0 {
+                                /*if now.hour() > 0 {
                                     let prev_hour = now.with_minute(59).unwrap().with_hour(now.hour() - 1 ).unwrap().with_second(59).unwrap();
                                     let mut point_prev = influxdb2::models::DataPoint::builder("inverter").timestamp(prev_hour.timestamp_nanos());
                                     
@@ -1002,7 +1002,7 @@ impl Sun2000 {
                                             }
                                         }
                                     }
-                                }
+                                }*/
 
 
                             } else {
