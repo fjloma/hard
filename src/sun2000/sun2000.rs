@@ -1008,7 +1008,7 @@ impl Sun2000 {
                             } else {
                                 changes = last_minute != current_minute ;
                                 
-                                let next_hour = now.with_minute(00).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap().timestamp_nanos() + Duration::from_secs(60*60).as_nanos() as i64;
+                                /*let next_hour = now.with_minute(00).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap().timestamp_nanos() + Duration::from_secs(60*60).as_nanos() as i64;
                                 let mut point_balance = influxdb2::models::DataPoint::builder("balance_test").timestamp(next_hour);
 
                                 // Balance table
@@ -1077,6 +1077,7 @@ impl Sun2000 {
                                         }
                                     }
                                 }
+                                */
                                 
                             }
 
