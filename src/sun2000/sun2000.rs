@@ -1010,7 +1010,7 @@ impl Sun2000 {
                                 
                                 if (changes) {
                                     let next_hour = now.with_minute(00).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap().timestamp_nanos();
-                                    let mut point_balance = influxdb2::models::DataPoint::builder("balance_test2").timestamp(next_hour);
+                                    let mut point_balance = influxdb2::models::DataPoint::builder("balance_test").timestamp(next_hour);
 
                                     // Balance table
                                     let mut grid_exported_energy = None;
