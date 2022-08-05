@@ -1010,37 +1010,34 @@ impl Sun2000 {
                                 
                                 if (changes) {
                                     let next_hour = now.with_minute(00).unwrap().with_second(0).unwrap().with_nanosecond(0).unwrap().timestamp_nanos();
-                                    let mut point_balance = influxdb2::models::DataPoint::builder("balance_test").timestamp(next_hour);
+                                    let mut point_balance = influxdb2::models::DataPoint::builder("balance_test2").timestamp(next_hour);
 
                                     // Balance table
                                     let mut grid_exported_energy = None;
                                     let mut grid_accumulated_energy = None;
                                     let mut solar = None;
                                     for p in &params {
-                                        if p.save_to_local_influx && p.name == "accumulated_yield_energy" {
-                                            if local_influx_last_values.contains_key("accumulated_yield_energy") {
-                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
-                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("accumulated_yield_energy").unwrap().get_influx_value(p.gain) {
-                                                        solar = Some(vnow-vlast);
-                                                    }
+                                        if p.save_to_local_influx && p.name == "accumulated_yield_energy" && local_influx_last_values.contains_key("accumulated_yield_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("accumulated_yield_energy").unwrap().get_influx_value(p.gain) {
+                                                    solar = Some(vnow-vlast);
+                                                
                                                 }
                                             }
                                         }
-                                        if p.save_to_local_influx && p.name == "grid_exported_energy" {
-                                            if local_influx_last_values.contains_key("grid_exported_energy") {
-                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
-                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_exported_energy").unwrap().get_influx_value(p.gain) {
-                                                        grid_exported_energy = Some(vnow-vlast);
-                                                    }
+                                        if p.save_to_local_influx && p.name == "grid_exported_energy" && local_influx_last_values.contains_key("grid_exported_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_exported_energy").unwrap().get_influx_value(p.gain) {
+                                                    grid_exported_energy = Some(vnow-vlast);
+                                                
                                                 }
                                             }
                                         }
-                                        if p.save_to_local_influx && p.name == "grid_accumulated_energy" {
-                                            if local_influx_last_values.contains_key("grid_accumulated_energy") {
-                                                if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
-                                                    if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_accumulated_energy").unwrap().get_influx_value(p.gain) {
-                                                        grid_accumulated_energy = Some(vnow-vlast);
-                                                    }
+                                        if p.save_to_local_influx && p.name == "grid_accumulated_energy" && local_influx_last_values.contains_key("grid_accumulated_energy") {
+                                            if let influxdb2::models::FieldValue::F64(vnow) = p.get_influx_value() {
+                                                if let influxdb2::models::FieldValue::F64(vlast) = local_influx_last_values.get("grid_accumulated_energy").unwrap().get_influx_value(p.gain) {
+                                                    grid_accumulated_energy = Some(vnow-vlast);
+                                                    
                                                 }
                                             }
                                         }
